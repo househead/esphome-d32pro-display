@@ -1,0 +1,201 @@
+esphome:
+  name: d32pro
+
+esp32:
+  board: lolin_d32_pro
+  framework:
+    type: arduino
+
+logger:
+  logs:
+    component: ERROR
+
+api:
+  encryption:
+    key: !secret ha_api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_flash_pass
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pw
+  ap:
+    ssid: ESPhome Fallback Hotspot
+    password: !secret wifi_fallback_pw
+
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: esptime
+
+spi:
+  - id: spi2
+    clk_pin: 18
+    mosi_pin: 23
+    miso_pin: 19
+    interface: spi2
+  - id: spi3
+    clk_pin: 14
+    mosi_pin: 13
+    miso_pin: 12
+    interface: spi3
+    # cs_pin: 15
+
+i2c:
+  frequency: 400kHz
+  sda: 21
+  scl: 22
+  scan: true
+
+display:
+  - platform: ili9xxx
+    model: ili9488_A
+    dc_pin: 25
+    reset_pin: 27
+    cs_pin: 5
+    id: my_display
+    # dimensions: 480x320
+    invert_colors: false
+    # color_palette: IMAGE_ADAPTIVE
+    # pixel_mode: 18bit
+    data_rate: 40MHz
+    spi_id: spi2
+    lambda: |-
+      auto touch = id(my_touchscreen) -> get_touch();
+      it.rectangle(0,  0, it.get_width(), it.get_height(), id(my_blue));
+      it.rectangle(0, 20, it.get_width(), it.get_height(), id(my_blue));
+      it.strftime((480 / 2), (140 / 3) * 1 + 5, id(arial_24), id(my_gray), TextAlign::CENTER, "%Y-%m-%d", id(esptime).now());
+      it.strftime((480 / 2), (140 / 3) * 2 + 5, id(arial_48), id(my_gray), TextAlign::CENTER, "%H:%M:%S", id(esptime).now());
+      it.printf((480 / 2), (140 / 3) * 3 + 5, id(arial_14), id(my_green), TextAlign::CENTER, "Humidity: %.1f%%", id(aht20_humidity).state);
+      it.printf((480 / 2), (140 / 3) * 4 + 5, id(arial_14), id(my_green), TextAlign::CENTER, "Temperature: %.1f C", id(aht20_temp).state);
+      it.print(5, 5, id(arial_12), id(my_yellow), TextAlign::TOP_LEFT, "ESPHome");
+      if (touch) {
+        auto x = touch.value().x;
+        auto y = touch.value().y;
+
+        if(x!=0 && y!=0){
+          it.filled_circle(x, y, 30, my_yellow);
+        }
+        ESP_LOGI("Test", "x=%d, y=%d",touch.value().x, touch.value().y);
+        }
+      if (touch) // or touch.has_value()
+        it.filled_circle(touch.value().x, touch.value().y, 10, my_red);
+
+touchscreen:
+  - platform: xpt2046
+    display: my_display
+    id: my_touchscreen
+    cs_pin: GPIO15
+    interrupt_pin: GPIO26
+    update_interval: 50ms
+    spi_id: spi3
+    #data_rate: 40MHz
+    threshold: 400
+    calibration:
+      x_max: 3820
+      x_min: 250
+      y_min: 220
+      y_max: 3860
+    transform:
+      mirror_x: true
+      mirror_y: true
+      swap_xy: true
+    on_touch:
+      - lambda: |-
+            ESP_LOGI("cal", "x=%d, y=%d, x_raw=%d, y_raw=%0d",
+                touch.x,
+                touch.y,
+                touch.x_raw,
+                touch.y_raw
+                );
+
+font:
+  - file: "fonts/arial.ttf"
+    id: arial_48
+    size: 48
+  - file: "fonts/arial.ttf"
+    id: arial_36
+    size: 36
+  - file: "fonts/arial.ttf"
+    id: arial_24
+    size: 24
+  - file: "fonts/arial.ttf"
+    id: arial_14
+    size: 14
+  - file: "fonts/arial.ttf"
+    id: arial_12
+    size: 12
+  - file: "fonts/arial.ttf"
+    id: arialbd_font
+    size: 12
+
+color:
+  - id: my_red
+    red: 100%
+    green: 0%
+    blue: 0%
+  - id: my_yellow
+    red: 100%
+    green: 100%
+    blue: 0%
+  - id: my_green
+    red: 0%
+    green: 100%
+    blue: 0%
+  - id: my_blue
+    red: 0%
+    green: 0%
+    blue: 100%
+  - id: my_gray
+    red: 50%
+    green: 50%
+    blue: 50%
+
+sensor:
+  - platform: wifi_signal
+    name: "d32pro wifi signal"
+    update_interval: 60s
+    entity_category: "diagnostic"
+    id: wifidb
+
+  - platform: aht10
+    address: 0x38
+    update_interval: 60s
+    variant: AHT20
+    temperature:
+      name: "AHT20 temp"
+      id: aht20_temp
+      accuracy_decimals: 1
+      filters:
+      - filter_out: 0.0
+      - median:
+          window_size: 3
+          send_every: 3
+          send_first_at: 1
+    humidity:
+      name: "AHT20 humidity"
+      id: aht20_humidity
+      accuracy_decimals: 1
+      filters:
+      - filter_out: 0.0
+      - median:
+          window_size: 3
+          send_every: 3
+          send_first_at: 1
+
+# Define a PWM output on the ESP32
+output:
+  - platform: ledc
+    pin: 33
+    id: gpio_33_backlight_pwm
+
+light:
+  - platform: monochromatic
+    output: gpio_33_backlight_pwm
+    name: "Display Brightness"
+    id: back_light
+
+    restore_mode: ALWAYS_ON
