@@ -1,10 +1,14 @@
 esphome:
   name: d32pro
+  platformio_options:
+    build_flags: -DBOARD_HAS_PSRAM -mfix-esp32-psram-cache-issue
+    board_build.f_flash: 80000000L
 
 esp32:
   board: lolin_d32_pro
   framework:
     type: arduino
+  flash_size: 16MB
 
 logger:
   logs:
@@ -48,6 +52,10 @@ i2c:
   sda: 21
   scl: 22
   scan: true
+
+psram:
+  mode: octal
+  speed: 120MHz
 
 display:
   - platform: ili9xxx
